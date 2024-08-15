@@ -1,0 +1,6 @@
+requests
+googlesearch-python
+awscli==1.33.4
+boto3==1.34.122
+botocore==1.34.122
+beautifulsoup4
