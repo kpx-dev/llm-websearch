@@ -1,104 +1,193 @@
-import logging
-import json
+# from dotenv import load_dotenv
+# load_dotenv()
 import boto3
+import os
+import json
+from datetime import datetime
 from botocore.exceptions import ClientError
+from datetime import date
+import wikipedia
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+session = boto3.Session()
+region = session.region_name
 
-def websearch(query):
-  return {"result": "Here is your answer..."}
+# modelId = 'anthropic.claude-3-sonnet-20240229-v1:0'
+modelId = 'anthropic.claude-3-haiku-20240307-v1:0'
 
-def generate_text(bedrock_client, model_id, tool_config, input_text):
-    logger.info("Generating text with model %s", model_id)
+print(f'Using modelId: {modelId}')
+print(f'Using region: ', {region})
 
-    messages = [{"role": "user", "content": [{"text": input_text}]}]
-    response = bedrock_client.converse(modelId=model_id, messages=messages, toolConfig=tool_config)
-    output_message = response['output']['message']
-    messages.append(output_message)
+bedrock_client = boto3.client(service_name = 'bedrock-runtime', region_name = region)
+
+def provider_websearch(query):
+    print(f"implement websearch here...: {query}")
+    # TODO: advance search, sort by last Edited?
+    pages = wikipedia.search(query)
+    # print(pages)
+    # exit()
+
+    # TODO: assume the 1st page is the best. Rerank?
+    page1 = wikipedia.page(pages[0])
+    page2 = wikipedia.page(pages[1])
+    # page3 = wikipedia.page(pages[2])
+    
+    # print(res.url)
+    payload = "{} \n {} \n".format(page1, page2)
+    return payload 
+
+    # return res.content
+
+    # payload = {
+    #     "title": res.title,
+    #     "url": res.url,
+    #     "content": res.content
+    # }
+    # return payload 
+
+def provider_catch_all(query):
+    print(f"Catch-all / fallback provider: {query}")
+
+provider_websearch_schema = {
+    "toolSpec": {
+        "name": "provider_websearch",
+        "description": "A tool to search the web for latest information.",
+        "inputSchema": {
+            "json": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The user query that will be send to do websearch"}
+            },
+            "required": ["query"]
+            }
+        }
+    }
+}
+
+provider_catch_all_schema = {
+    "toolSpec": {
+        "name": "provider_catch_all",
+        "description": "A tool to handle any generic query that other previous tools can't answer.",
+        "inputSchema": {
+            "json": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The user query that other previous tool doesn't understand."}
+            },
+            "required": ["query"]
+            }
+        }
+    }
+}
+
+toolConfig = {
+    "tools": [provider_websearch_schema],
+    # "toolChoice": {
+    #     "any":{},    # must trigger one of the available tools
+    #     # "auto":{}, # default
+    #     # "tool":{   # always trigger this tool
+    #     #     "name": "provider_websearch"
+    #     # },
+    # }
+}
+
+def guardrails(prompt): 
+    response = bedrock_client.apply_guardrail(
+        guardrailIdentifier=os.environ.get('GUARDRAILS_ID'), # ex: '453cg26ykbxy'
+        guardrailVersion='1',
+        source='INPUT', #|'OUTPUT',
+        content=[
+            {
+                'text': {
+                    'text': prompt,
+                    # 'qualifiers': [
+                    #     'grounding_source'|'query'|'guard_content',
+                    # ]
+                }
+            },
+        ]
+    )
+    # print(response)
+    return response 
+    
+def router(user_query, enable_guardrails=False):
+    # apply guardrails 
+    if enable_guardrails:
+        guard = guardrails(user_query)
+        if guard['action'] == 'GUARDRAIL_INTERVENED':
+            print("Guardrails blocked this action", guard["assessments"])
+            return
+
+    messages = [{"role": "user", "content": [{"text": user_query}]}]
+
+    system_prompt=f"""
+          You will be asked a question by the user. 
+    If answering the question requires data you were not trained on, you must use the get_article tool to get the contents of a recent wikipedia article about the topic. 
+    If you can answer the question without needing to get more information, please do so. 
+    Only call the tool when needed. 
+
+    """
+
+    converse_api_params = {
+        "modelId": modelId,
+        "system": [{"text": system_prompt}],
+        "messages": messages,
+        "inferenceConfig": {"temperature": 0.0, "maxTokens": 4096},
+        "toolConfig": toolConfig,
+    }
+
+    response = bedrock_client.converse(**converse_api_params)
+
     stop_reason = response['stopReason']
 
-    if stop_reason == 'tool_use':
-      tool_requests = response['output']['message']['content']
-      for tool_request in tool_requests:
-        if 'toolUse' in tool_request:
-          tool = tool_request['toolUse']
+    if stop_reason == "end_turn":
+        print("Claude did NOT call a tool")
+        print(f"Assistant: {stop_reason}")
+    elif stop_reason == "tool_use":
+        messages.append({"role": "assistant", "content": response['output']['message']['content']})
+        # print("Claude wants to use a tool")
+        # print(response['output'])
 
-          if tool['name'] == 'websearch':
-            websearch_res = websearch(tool['input']['query'])
-            tool_result = {
-              "toolUseId": tool['toolUseId'],
-              "content": [{"json": {"results": websearch_res}}]
-            }
-            tool_result_message = {
+        # trigger the actual tool to use: 
+        if response['output']['message']['content'][0]['toolUse']['name'] == 'provider_websearch': 
+          tool_id = response['output']['message']['content'][0]['toolUse']['toolUseId']
+          websearch_res = provider_websearch(response['output']['message']['content'][0]['toolUse']['input']['query'])
+
+          tool_response = {
               "role": "user",
               "content": [
-                {
-                  "toolResult": tool_result
-                }
-              ],
-
-            }
-            messages.append(tool_result_message)
-
-            response = bedrock_client.converse(
-                modelId=model_id,
-                messages=messages,
-                toolConfig=tool_config,
-
-            )
-            output_message = response['output']['message']
-
-    # print the final response from the model.
-    for content in output_message['content']:
-      print(json.dumps(content, indent=4))
-
-def main():
-  logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-  model_id = "anthropic.claude-3-haiku-20240307-v1:0"
-
-  with open("prompt/system-prompt.txt") as f:
-    system_prompt = f.read()
-
-  with open("prompt/user-prompt.txt") as f:
-    user_prompt = f.read()
-
-  tool_config = {
-    # force tool use
-    "toolChoice": {"tool": {"name": "websearch"}},
-    "tools": [{
-      "toolSpec": {
-          "name": "websearch",
-          "description": "Search the web for data.",
-          "inputSchema": {
-              "json": {
-                  "type": "object",
-                  "properties": {
-                      "query": {
-                        "type": "string",
-                        "description": "The query to send to search engine."
+                  {
+                      "toolResult": {
+                          "toolUseId": tool_id,
+                          "content": [
+                              {"text": websearch_res}
+                          ]
                       }
-                  },
-                  "required": [
-                    "query"
-                  ]
-              }
+                  }
+              ]
           }
-      }
-      }
-    ]
-  }
-  bedrock_client = boto3.client(service_name='bedrock-runtime', region_name="us-east-1")
+          # print(tool_response)
 
-  try:
-    generate_text(bedrock_client, model_id, tool_config, user_prompt)
+          messages.append(tool_response)
+          converse_api_params = {
+                "modelId": modelId,
+                "system": [{"text": system_prompt}],
+                "messages": messages,
+                "inferenceConfig": {"temperature": 0.0, "maxTokens": 4096},
+                "toolConfig": toolConfig
+          }
+          # print("before final res")
+          final_res = bedrock_client.converse(**converse_api_params)
 
-  except ClientError as err:
-    message = err.response['Error']['Message']
-    logger.error("A client error occurred: %s", message)
-    print(f"A client error occured: {message}")
-  else:
-    print(f"Finished generating text with model {model_id}.")
+          print("Claude's final answer:")
+          print(final_res['output']['message']['content'][0]['text'])
+
+        # print(response['usage'])
+        # print(response['metrics'])
+        
 
 if __name__ == "__main__":
-  main()
+    # router("Why is the sky blue?")
+    # router("Which countries have the most medal in the Olympic 2024?")
+    # router("Who's the current President of the United States?")
+    router("Who are the candidate running for US President in 2024?")
+    
