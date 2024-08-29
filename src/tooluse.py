@@ -1,5 +1,5 @@
-from dotenv import load_dotenv
-load_dotenv()
+#from dotenv import load_dotenv
+#load_dotenv()
 import boto3
 import os
 import json
@@ -7,6 +7,7 @@ from datetime import datetime
 from botocore.exceptions import ClientError
 from datetime import date
 import wikipedia
+from markdownify import markdownify as md
 
 session = boto3.Session()
 region = session.region_name
@@ -25,10 +26,13 @@ def provider_websearch(query):
     pages = wikipedia.search(query)
 
     # TODO: assume the 1st page is the best. Rerank?
-    page1 = wikipedia.page(pages[0])
-    page2 = wikipedia.page(pages[1])
-    
-    payload = "{} \n {} \n".format(page1, page2)
+    #page1 = wikipedia.page(pages[0])
+    #page2 = wikipedia.page(pages[1])
+    html_text = wikipedia.page(pages[0]).html()
+    markdown_text = md(html_text)
+
+    # payload = "{} \n {} \n".format(page1, page2)
+    payload = "{} \n".format(markdown_text)
     return payload 
 
 provider_websearch_schema = {
