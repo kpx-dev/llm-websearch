@@ -1,5 +1,5 @@
 requests
 googlesearch-python
-awscli==1.33.4
 beautifulsoup4
 wikipedia
+boto3
