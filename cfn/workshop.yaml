@@ -56,12 +56,11 @@ Resources:
       KmsKeyId: !GetAtt KmsKey.Arn
 
 Outputs:
-  NotebookInstanceName:
-    Description: The name of the created SageMaker Notebook Instance
-    Value: !Ref SageMakerNotebookInstance
-  ExecutionRoleArn:
-    Description: The ARN of the created SageMaker Execution Role
-    Value: !GetAtt SageMakerExecutionRole.Arn
-  KmsKeyArn:
-    Description: The ARN of the created KMS Key for the notebook
-    Value: !GetAtt KmsKey.Arn
+  NoteBookLocation: 
+    Value: !Join
+      - ''
+      - - "https://"
+        - !Ref "AWS::Region"
+        - ".console.aws.amazon.com/sagemaker/home?region="
+        - !Ref "AWS::Region"
+        - !Sub "#/notebook-instances/openNotebook/${NotebookName}?view=lab"
