@@ -24,11 +24,11 @@ def provider_websearch(query):
     print(f"implement websearch here...: {query}")
     # TODO: advance search, sort by last Edited?
     pages = wikipedia.search(query)
-
+    #print ("pages[0]", pages[0])
     # TODO: assume the 1st page is the best. Rerank?
-    #page1 = wikipedia.page(pages[0])
-    #page2 = wikipedia.page(pages[1])
-    html_text = wikipedia.page(pages[0]).html()
+    page1 = wikipedia.page(title=pages[0], auto_suggest=False)
+    print("page title:", page1.title)
+    html_text = page1.html()
     markdown_text = md(html_text)
 
     # payload = "{} \n {} \n".format(page1, page2)
@@ -146,6 +146,6 @@ def router(user_query, enable_guardrails=False):
 
 if __name__ == "__main__":
     # router("Why is the sky blue?")
-    # router("Which countries have the most medal in the Olympic 2024?")
+    router("Which countries have the most medal in the Olympic 2024?")
     # router("Who's the current President of the United States?")
-    router("Who are the candidate running for US President in 2024?")
+    #router("Who are the Democratic and Republican nominee running for US President in 2024?")
