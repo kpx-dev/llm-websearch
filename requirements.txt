@@ -2,6 +2,4 @@ requests
 googlesearch-python
 beautifulsoup4
 boto3
-setuptools~=74.1.1
-packaging~=24.1
 markdownify

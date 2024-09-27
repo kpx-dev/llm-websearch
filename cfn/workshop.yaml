@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'LLM Websearch: CloudFormation template to create a Jupyter notebook in SageMaker with an execution role'
+Description: 'Realtime LLM Websearch: CloudFormation template to create a Jupyter notebook in SageMaker with an execution role'
 
 Parameters:
   NotebookName:
     Type: String
-    Default: 'LLMWebsearchNotebook'
+    Default: 'RealtimeLLMWebsearchNotebook'
   DefaultRepoUrl:
     Type: String
-    Default: 'https://github.com/kpx-dev/llm-websearch.git'
+    Default: 'https://github.com/aws-samples/realtime-llm-websearch.git'
 
 Resources:
   SageMakerExecutionRole:
