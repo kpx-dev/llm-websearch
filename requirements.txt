@@ -3,3 +3,4 @@ googlesearch-python
 beautifulsoup4
 boto3
 markdownify
+pdfplumber
